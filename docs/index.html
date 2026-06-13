@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>REAP-EVAL — Evaluating Pruned MoE Model Releases</title>
+<meta name="description" content="A reusable, model-agnostic methodology for judging pruned/compressed Mixture-of-Experts model releases.">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,600;0,9..144,900;1,9..144,500&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0a0d12;
+    --panel:#10151e;
+    --panel-2:#161d28;
+    --line:#212c3b;
+    --line-soft:#1a2230;
+    --fg:#e8ecf3;
+    --fg-mute:#8b95aa;
+    --fg-dim:#5a6479;
+    --amber:#f5b942;
+    --amber-deep:#c8902a;
+    --win:#37d9a0;
+    --marg:#f5b942;
+    --fail:#ff5f5f;
+    --unc:#7aa2f7;
+    --mono:'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --serif:'Fraunces', Georgia, serif;
+  }
+
+  html,body{background:var(--ink);}
+  .reveal{
+    font-family:var(--mono);
+    font-size:30px;
+    color:var(--fg);
+    font-weight:400;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- atmosphere: graph paper + vignette + grain ---------- */
+  .reveal .backgrounds{background:var(--ink);}
+  .bg-atmos{position:fixed;inset:0;z-index:0;pointer-events:none;}
+  .bg-atmos::before{ /* graph paper grid */
+    content:"";position:absolute;inset:0;
+    background-image:
+      linear-gradient(var(--line-soft) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line-soft) 1px, transparent 1px);
+    background-size:46px 46px, 46px 46px;
+    background-position:center;
+    -webkit-mask-image:radial-gradient(ellipse 90% 80% at 50% 42%, #000 35%, transparent 92%);
+            mask-image:radial-gradient(ellipse 90% 80% at 50% 42%, #000 35%, transparent 92%);
+    opacity:.55;
+  }
+  .bg-atmos::after{ /* vignette + amber glow top-left */
+    content:"";position:absolute;inset:0;
+    background:
+      radial-gradient(1200px 700px at 12% 0%, rgba(245,185,66,.10), transparent 60%),
+      radial-gradient(1000px 800px at 100% 100%, rgba(122,162,247,.07), transparent 55%),
+      radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0,0,0,.55) 100%);
+  }
+  .grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.05;mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+
+  .reveal .slides{text-align:left;}
+  .reveal .slides section{height:100%;}
+
+  /* ---------- typography ---------- */
+  .reveal h1,.reveal h2,.reveal h3{font-family:var(--serif);font-weight:900;color:var(--fg);
+    text-transform:none;letter-spacing:-.01em;line-height:.98;margin:0 0 .25em;}
+  .reveal h1{font-size:2.5em;}
+  .reveal h2{font-size:1.62em;}
+  .reveal h3{font-size:1.05em;font-weight:600;}
+  .reveal p{line-height:1.45;margin:.45em 0;}
+  .reveal strong{color:var(--fg);font-weight:600;}
+  .reveal em{font-family:var(--serif);font-style:italic;font-weight:500;color:var(--amber);}
+  .reveal a{color:var(--amber);text-decoration:none;border-bottom:1px solid rgba(245,185,66,.35);}
+  .reveal code{font-family:var(--mono);font-size:.86em;color:var(--amber);
+    background:rgba(245,185,66,.08);padding:.04em .35em;border-radius:3px;border:1px solid rgba(245,185,66,.16);}
+
+  /* eyebrow / kicker */
+  .kicker{font-family:var(--mono);font-size:.5em;font-weight:600;letter-spacing:.32em;
+    text-transform:uppercase;color:var(--amber);margin:0 0 .8em;display:flex;align-items:center;gap:.7em;}
+  .kicker::before{content:"";width:26px;height:2px;background:var(--amber);display:inline-block;
+    transform-origin:left;animation:drawline .7s cubic-bezier(.2,.7,.2,1) both;}
+  @keyframes drawline{from{transform:scaleX(0);}to{transform:scaleX(1);}}
+
+  /* dossier file number */
+  .fileno{position:absolute;top:0;right:0;font-family:var(--mono);font-size:.46em;font-weight:500;
+    letter-spacing:.18em;color:var(--fg-dim);}
+  .fileno b{color:var(--amber);font-weight:600;}
+
+  /* persistent footer */
+  .reveal .slide-footer{position:fixed;bottom:18px;left:46px;right:46px;z-index:6;
+    display:flex;justify-content:space-between;align-items:center;
+    font-family:var(--mono);font-size:13px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--fg-dim);pointer-events:none;}
+  .reveal .slide-footer .repo{color:var(--fg-mute);}
+  .reveal .slide-footer .tag{color:var(--amber-deep);}
+
+  .reveal section{padding:0 8px;}
+  .lead{font-size:.92em;color:var(--fg-mute);max-width:24ch;}
+
+  /* ---------- reusable bits ---------- */
+  .rule{height:1px;background:linear-gradient(90deg,var(--line),transparent);margin:.7em 0;}
+  .muted{color:var(--fg-mute);}
+  .dim{color:var(--fg-dim);}
+  .small{font-size:.62em;}
+  .mono-label{font-family:var(--mono);font-size:.5em;letter-spacing:.2em;text-transform:uppercase;color:var(--fg-dim);}
+
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:26px;}
+  .cols-3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 20px;}
+  .card .ct{font-family:var(--mono);font-size:.52em;letter-spacing:.16em;text-transform:uppercase;color:var(--fg-dim);margin-bottom:.5em;}
+
+  ul.tight{list-style:none;margin:0;padding:0;}
+  ul.tight li{position:relative;padding:.16em 0 .16em 1.3em;font-size:.74em;line-height:1.4;}
+  ul.tight li::before{content:"▸";position:absolute;left:0;color:var(--amber);font-size:.8em;top:.32em;}
+
+  ol.steps{list-style:none;counter-reset:s;margin:0;padding:0;
+    display:grid;grid-template-columns:1fr 1fr;gap:12px 30px;}
+  ol.steps li{counter-increment:s;position:relative;padding:.5em .2em .5em 2.6em;font-size:.76em;
+    border-bottom:1px solid var(--line-soft);}
+  ol.steps li::before{content:counter(s,decimal-leading-zero);position:absolute;left:0;top:.42em;
+    font-family:var(--mono);font-weight:700;color:var(--amber);font-size:.95em;
+    background:rgba(245,185,66,.07);border:1px solid rgba(245,185,66,.2);border-radius:6px;
+    width:1.7em;height:1.7em;display:flex;align-items:center;justify-content:center;}
+
+  /* threshold gauge */
+  .gauge{display:flex;border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:.4em 0 .2em;
+    font-family:var(--mono);}
+  .gauge .seg{padding:26px 18px;display:flex;flex-direction:column;gap:6px;}
+  .gauge .seg .v{font-size:1.5em;font-weight:700;line-height:1;}
+  .gauge .seg .l{font-size:.42em;letter-spacing:.22em;text-transform:uppercase;}
+  .gauge .g1{flex:1.0;background:rgba(55,217,160,.10);color:var(--win);border-right:1px solid var(--line);}
+  .gauge .g2{flex:1.3;background:rgba(245,185,66,.10);color:var(--marg);border-right:1px solid var(--line);}
+  .gauge .g3{flex:1.7;background:rgba(255,95,95,.10);color:var(--fail);}
+
+  /* tiers */
+  .tier{display:flex;gap:14px;align-items:baseline;padding:.5em 0;border-bottom:1px solid var(--line-soft);}
+  .tier .tname{font-family:var(--mono);font-weight:700;font-size:.7em;letter-spacing:.08em;min-width:4.4em;}
+  .tier .tbench{font-size:.66em;color:var(--fg-mute);}
+  .t1 .tname{color:var(--fail);} .t2 .tname{color:var(--marg);} .t3 .tname{color:var(--unc);}
+
+  .callout{border-left:3px solid var(--amber);background:rgba(245,185,66,.06);
+    padding:14px 18px;border-radius:0 8px 8px 0;font-size:.72em;}
+
+  /* red flag grid */
+  .flags{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;}
+  .flag{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:11px 13px;}
+  .flag .n{font-family:var(--mono);font-size:.5em;color:var(--fail);font-weight:700;letter-spacing:.1em;}
+  .flag .ttl{font-family:var(--mono);font-weight:600;font-size:.6em;color:var(--fg);margin:.25em 0 .15em;line-height:1.2;}
+  .flag .d{font-size:.5em;color:var(--fg-mute);line-height:1.35;}
+
+  /* verdict cards */
+  .verdicts{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+  .vc{border:1px solid var(--line);border-radius:10px;padding:16px;background:var(--panel);position:relative;overflow:hidden;}
+  .vc::before{content:"";position:absolute;top:0;left:0;right:0;height:4px;}
+  .vc .vt{font-family:var(--serif);font-weight:900;font-size:.92em;margin-bottom:.3em;}
+  .vc .vd{font-size:.54em;color:var(--fg-mute);line-height:1.4;}
+  .vc.win::before{background:var(--win);} .vc.win .vt{color:var(--win);}
+  .vc.marg::before{background:var(--marg);} .vc.marg .vt{color:var(--marg);}
+  .vc.fail::before{background:var(--fail);} .vc.fail .vt{color:var(--fail);}
+  .vc.unc::before{background:var(--unc);} .vc.unc .vt{color:var(--unc);}
+
+  .chip{display:inline-block;font-family:var(--mono);font-size:.5em;font-weight:600;letter-spacing:.1em;
+    text-transform:uppercase;padding:.3em .7em;border-radius:100px;border:1px solid;}
+  .chip.win{color:var(--win);border-color:rgba(55,217,160,.45);background:rgba(55,217,160,.08);}
+  .chip.marg{color:var(--marg);border-color:rgba(245,185,66,.45);background:rgba(245,185,66,.08);}
+  .chip.fail{color:var(--fail);border-color:rgba(255,95,95,.45);background:rgba(255,95,95,.08);}
+
+  /* scorecard mock */
+  .sheet{font-family:var(--mono);font-size:.6em;border:1px solid var(--line);border-radius:10px;
+    background:var(--panel);overflow:hidden;}
+  .sheet .row{display:flex;justify-content:space-between;gap:18px;padding:9px 16px;border-bottom:1px solid var(--line-soft);}
+  .sheet .row:last-child{border-bottom:0;}
+  .sheet .k{color:var(--fg-mute);}
+  .sheet .head{background:var(--panel-2);color:var(--amber);letter-spacing:.16em;text-transform:uppercase;font-size:.85em;font-weight:600;}
+
+  .big-quote{font-family:var(--serif);font-style:italic;font-weight:500;font-size:2.0em;line-height:1.12;
+    color:var(--fg);max-width:18ch;}
+  .big-quote .hl{color:var(--amber);font-style:italic;}
+
+  /* title slide */
+  .title-wrap{display:flex;flex-direction:column;height:100%;justify-content:center;}
+  .title-wrap .wordmark{font-family:var(--serif);font-weight:900;font-size:4.4em;line-height:.9;letter-spacing:-.02em;}
+  .title-wrap .wordmark .dot{color:var(--amber);}
+  .title-sub{font-size:.82em;color:var(--fg-mute);margin-top:.5em;max-width:30ch;line-height:1.4;}
+  .title-meta{margin-top:1.4em;display:flex;gap:10px;flex-wrap:wrap;}
+  .pill{font-family:var(--mono);font-size:13px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--fg-mute);border:1px solid var(--line);border-radius:100px;padding:7px 14px;background:var(--panel);}
+  .pill b{color:var(--amber);font-weight:600;}
+
+  .reveal .progress{color:var(--amber);height:3px;}
+  .reveal .controls{color:var(--fg-dim);}
+  .reveal .slide-number{font-family:var(--mono);background:transparent;color:var(--fg-dim);font-size:13px;letter-spacing:.1em;}
+
+  /* fragment stagger helper handled by reveal */
+  .reveal section .fragment.fade-up{transform:translateY(14px);}
+  .reveal section .fragment.fade-up.visible{transform:none;}
+
+  .splitline{display:flex;gap:16px;align-items:center;font-size:.66em;color:var(--fg-mute);margin-top:.3em;}
+</style>
+</head>
+<body>
+<div class="bg-atmos"></div>
+<div class="grain"></div>
+
+<div class="reveal">
+  <div class="slide-footer">
+    <span class="repo">github.com/DJLougen/reap-eval</span>
+    <span class="tag">PRUNED-MoE EVALUATION · v1.0</span>
+  </div>
+  <div class="slides">
+
+    <!-- 00 TITLE -->
+    <section data-background-color="#0a0d12">
+      <div class="title-wrap">
+        <div class="kicker">Methodology · v1.0 · Jun 2026</div>
+        <div class="wordmark">REAP<span class="dot">·</span>EVAL</div>
+        <div class="title-sub">A reusable, model-agnostic protocol for judging whether a pruned or compressed Mixture-of-Experts checkpoint is worth running.</div>
+        <div class="title-meta">
+          <span class="pill"><b>Rubric</b> · thresholds · tiers</span>
+          <span class="pill"><b>11</b> red flags</span>
+          <span class="pill"><b>4</b> behavioral tests</span>
+          <span class="pill">scorecard + checklist</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 01 THESIS -->
+    <section>
+      <span class="fileno">FILE <b>01</b> / 14 · THESIS</span>
+      <div class="kicker">The premise</div>
+      <p class="big-quote">A pruned MoE is <span class="hl">guilty until proven innocent.</span></p>
+      <div class="rule"></div>
+      <p style="font-size:.82em;max-width:34ch;">The burden of proof is <strong>base-vs-pruned quality benchmarks on agentic / coding tasks</strong> — posted by the producer, or run by you.</p>
+      <p class="muted" style="font-size:.66em;max-width:40ch;">Download counts, throughput numbers, observation dumps, and a clean-looking name are <strong style="color:var(--fail)">not</strong> evidence of quality.</p>
+    </section>
+
+    <!-- 02 CHANGES vs PRESERVES -->
+    <section>
+      <span class="fileno">FILE <b>02</b> / 14 · CONTEXT</span>
+      <div class="kicker">Why it's hard to judge</div>
+      <h2>Know what pruning touches</h2>
+      <div class="cols" style="margin-top:.5em;">
+        <div class="card">
+          <div class="ct" style="color:var(--fail)">Changes</div>
+          <ul class="tight">
+            <li>routed-expert count</li>
+            <li>expert tensors &amp; ID mapping</li>
+            <li>checkpoint size</li>
+            <li>memory footprint</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="ct" style="color:var(--win)">Preserves (by design)</div>
+          <ul class="tight">
+            <li>context length · tokenizer</li>
+            <li>attention architecture · layers</li>
+            <li>experts active / token</li>
+            <li>chat format</li>
+          </ul>
+        </div>
+      </div>
+      <div class="callout" style="margin-top:18px;">
+        So <code>fits on 1 GPU</code>, <code>200K context</code>, <code>fast prefill</code> are preserved almost for free — they are <strong>fit / throughput facts, not quality</strong>. Never let them stand in for quality.
+      </div>
+    </section>
+
+    <!-- 03 THE PASS -->
+    <section>
+      <span class="fileno">FILE <b>03</b> / 14 · WORKFLOW</span>
+      <div class="kicker">The six-step pass</div>
+      <h2>How to run an evaluation</h2>
+      <ol class="steps" style="margin-top:.5em;">
+        <li><strong>Identify</strong> — base, prune ratio, quant, size reduction.</li>
+        <li><strong>Read the card</strong> — find the disclosed tradeoff &amp; every warning word.</li>
+        <li><strong>Verify provenance</strong> — are cited datasets public &amp; real? <span class="dim">(401/404)</span></li>
+        <li><strong>Classify evidence</strong> — tier-weight, confidence, relative drop.</li>
+        <li><strong>Separate prune vs quant</strong> — attribute the degradation.</li>
+        <li><strong>Test it yourself</strong> — loops, bounded vs open, sweep, needle.</li>
+      </ol>
+    </section>
+
+    <!-- 04 METRIC RULE / GAUGE -->
+    <section>
+      <span class="fileno">FILE <b>04</b> / 14 · METRIC</span>
+      <div class="kicker">The metric rule</div>
+      <h2>Always <em>relative</em> drop</h2>
+      <p class="muted" style="font-size:.7em;max-width:42ch;">Percentage points mislead. <code>80%→73%</code> is 7 pp — but <strong>8.75% relative</strong>. The relative figure is what crosses thresholds.</p>
+      <div class="gauge">
+        <div class="seg g1"><span class="v">&lt;5%</span><span class="l">Minimal</span></div>
+        <div class="seg g2"><span class="v">5–15%</span><span class="l">Marginal</span></div>
+        <div class="seg g3"><span class="v">&gt;15%</span><span class="l">Failure</span></div>
+      </div>
+      <p class="dim small" style="margin-top:.5em;">…or <strong style="color:var(--fail)">any</strong> repetition / collapse / “do not use / not stable” — regardless of the number.</p>
+    </section>
+
+    <!-- 05 TIERS + VETO -->
+    <section>
+      <span class="fileno">FILE <b>05</b> / 14 · WEIGHTING</span>
+      <div class="kicker">Benchmark weighting</div>
+      <h2>Not all benchmarks count equally</h2>
+      <div style="margin-top:.4em;">
+        <div class="tier t1"><span class="tname">TIER 1</span><span class="tbench">SWE-Bench Verified · Terminal-Bench · browser-use · HumanEval+/MBPP · LiveCodeBench &nbsp;<span class="dim">— agentic/coding, highest weight</span></span></div>
+        <div class="tier t2"><span class="tname">TIER 2</span><span class="tbench">GSM8K · MATH · GPQA · BBH &nbsp;<span class="dim">— reasoning/math</span></span></div>
+        <div class="tier t3"><span class="tname">TIER 3</span><span class="tbench">MMLU · ARC · HellaSwag · knowledge QA &nbsp;<span class="dim">— cheap to preserve, least diagnostic</span></span></div>
+      </div>
+      <div class="callout" style="margin-top:18px;">
+        <strong>Tier-1 veto:</strong> a model <strong>cannot</strong> be a Clear Win with <strong style="color:var(--fail)">&gt;10% relative drop on any Tier-1</strong> benchmark — no matter how good Tier-3 looks.
+      </div>
+    </section>
+
+    <!-- 06 CONFIDENCE -->
+    <section>
+      <span class="fileno">FILE <b>06</b> / 14 · CONFIDENCE</span>
+      <div class="kicker">Confidence levels</div>
+      <h2>How much to trust the numbers</h2>
+      <div class="cols-3" style="margin-top:.5em;">
+        <div class="card"><div class="ct" style="color:var(--win)">High</div><ul class="tight">
+          <li>baseline posted</li><li>n≥100 coding · ≥250 MMLU</li><li>lm-eval / multiple evals</li></ul></div>
+        <div class="card"><div class="ct" style="color:var(--marg)">Medium</div><ul class="tight">
+          <li>proxy n=50–100</li><li>self-reported</li><li>partial baseline</li></ul></div>
+        <div class="card"><div class="ct" style="color:var(--fail)">Low</div><ul class="tight">
+          <li>qualitative only</li><li>no baseline · n&lt;50</li><li>“experimental” · private</li></ul></div>
+      </div>
+      <p class="dim small" style="margin-top:14px;">Sample-size floor: discard any &lt;50-sample proxy or any “97% retained”-style claim with no baseline.</p>
+    </section>
+
+    <!-- 07 RED FLAGS -->
+    <section>
+      <span class="fileno">FILE <b>07</b> / 14 · TELLS</span>
+      <div class="kicker">Red-flag catalog</div>
+      <h2 style="margin-bottom:.4em;">Eleven ways a lossy prune hides</h2>
+      <div class="flags">
+        <div class="flag"><div class="n">RF-01</div><div class="ttl">Placeholder benchmark tables</div><div class="d">literal {{VAR}} / TBD cells under a “Benchmarks” heading</div></div>
+        <div class="flag"><div class="n">RF-02</div><div class="ttl">“Pruned / %” scrubbed from name</div><div class="d">reads like a first-party release; tradeoff only in body</div></div>
+        <div class="flag"><div class="n">RF-03</div><div class="ttl">Buried warning words</div><div class="d">experimental · alpha · not stable · do not use</div></div>
+        <div class="flag"><div class="n">RF-04</div><div class="ttl">Interrupted / debug-only bench</div><div class="d">“not a final score” · artifact ≠ measurement</div></div>
+        <div class="flag"><div class="n">RF-05</div><div class="ttl">Private / dangling evidence</div><div class="d">cited dataset returns 401 / 404 → unverifiable</div></div>
+        <div class="flag"><div class="n">RF-06</div><div class="ttl">Unbacked retention %</div><div class="d">“97.9% retained” with no baseline or sample size</div></div>
+        <div class="flag"><div class="n">RF-07</div><div class="ttl">Citation drift</div><div class="d">bibtex doesn’t match the arXiv ID it cites</div></div>
+        <div class="flag"><div class="n">RF-08</div><div class="ttl">Throughput as quality</div><div class="d">only tok/s · TTFT · context · “fits on 1 GPU”</div></div>
+        <div class="flag"><div class="n">RF-09</div><div class="ttl">Narrow eval suite</div><div class="d">English-only n=50; misses multilingual / long-form</div></div>
+        <div class="flag"><div class="n">RF-10</div><div class="ttl">Downloads as proof</div><div class="d">“Proven” / popularity in lieu of validation</div></div>
+        <div class="flag"><div class="n">RF-11</div><div class="ttl">Hygiene inconsistency</div><div class="d">leaked local paths / tokens → low-rigor signal</div></div>
+      </div>
+    </section>
+
+    <!-- 08 BEHAVIORAL BATTERY -->
+    <section>
+      <span class="fileno">FILE <b>08</b> / 14 · PROBES</span>
+      <div class="kicker">Behavioral test battery</div>
+      <h2>When the card has no quality numbers — test it</h2>
+      <div class="cols" style="margin-top:.4em;">
+        <div class="card" style="border-color:rgba(255,95,95,.4);">
+          <div class="ct" style="color:var(--fail)">★ Repetition-loop probe</div>
+          <p style="font-size:.62em;margin:0;color:var(--fg-mute)">Open-ended, long-form prompts, ≥2048 tok. Fail = token/phrase loops, never-terminating reasoning, no natural stop. <strong>Most important for ≥40% prunes.</strong></p>
+        </div>
+        <div class="card">
+          <div class="ct">Bounded vs open-ended</div>
+          <p style="font-size:.62em;margin:0;color:var(--fg-mute)">JSON · tools · code · short Q&amp;A usually survive; prose breaks. Report the split, not one verdict.</p>
+        </div>
+        <div class="card">
+          <div class="ct">Sampling sweep</div>
+          <p style="font-size:.62em;margin:0;color:var(--fg-mute)">temp 0 · rep_penalty 1.0→1.15. Loops persist ⇒ structural, not a sampling bug.</p>
+        </div>
+        <div class="card">
+          <div class="ct">Long-context needle</div>
+          <p style="font-size:.62em;margin:0;color:var(--fg-mute)">Insert a fact at depth; verify retrieval + clean termination across context bands.</p>
+        </div>
+      </div>
+      <p class="dim small" style="margin-top:12px;">Producer-side: <strong>gate-repair audit</strong> — surviving router gates must equal source rows, max abs diff <code>0.0</code>.</p>
+    </section>
+
+    <!-- 09 VERDICTS -->
+    <section>
+      <span class="fileno">FILE <b>09</b> / 14 · TAXONOMY</span>
+      <div class="kicker">Verdict taxonomy</div>
+      <h2>Four outcomes</h2>
+      <div class="verdicts" style="margin-top:.5em;">
+        <div class="vc win"><div class="vt">Clear Win</div><div class="vd">All Tier-1 drops &lt;5%, baseline posted, n≥100, no warnings, no loops.</div></div>
+        <div class="vc marg"><div class="vt">Marginal</div><div class="vd">Tier-1 drops 5–15%, functional, minor degradation.</div></div>
+        <div class="vc fail"><div class="vt">Failure</div><div class="vd">Any Tier-1 &gt;15%, OR repetition/collapse, OR “do not use”.</div></div>
+        <div class="vc unc"><div class="vt">Uncertain / High-Risk</div><div class="vd">No baseline · n&lt;50 · “experimental” · private evidence.</div></div>
+      </div>
+      <p class="dim small" style="margin-top:16px;">Default suspicion: <strong>≥40% prune + open-ended generation = assume repetition-loop risk</strong> until tested.</p>
+    </section>
+
+    <!-- 10 SCORECARD -->
+    <section>
+      <span class="fileno">FILE <b>10</b> / 14 · INSTRUMENT</span>
+      <div class="kicker">The scorecard</div>
+      <h2>One sheet per model</h2>
+      <div class="sheet" style="margin-top:.4em;max-width:30ch;">
+        <div class="row head"><span>Evaluation scorecard</span><span>§8</span></div>
+        <div class="row"><span class="k">baseline posted?</span><span>Y / N</span></div>
+        <div class="row"><span class="k">cited datasets public?</span><span>Y / N · 401?</span></div>
+        <div class="row"><span class="k">confidence</span><span>High / Med / Low</span></div>
+        <div class="row"><span class="k">Tier-1 rel. drop</span><span>__% · veto?</span></div>
+        <div class="row"><span class="k">prune vs quant</span><span>__ / __ / comb.</span></div>
+        <div class="row"><span class="k">repetition loop</span><span>pass / FAIL</span></div>
+        <div class="row"><span class="k">long-ctx needle</span><span>pass / FAIL</span></div>
+        <div class="row head"><span>VERDICT</span><span>____</span></div>
+      </div>
+      <p class="dim small" style="margin-top:14px;"><code>templates/scorecard.md</code> — copy, fill, nothing blank.</p>
+    </section>
+
+    <!-- 11 STOPPING RULE -->
+    <section>
+      <span class="fileno">FILE <b>11</b> / 14 · ECONOMICS</span>
+      <div class="kicker">Stopping rule</div>
+      <h2>When the effort isn’t justified</h2>
+      <ul class="tight" style="font-size:1.02em;margin-top:.3em;">
+        <li><strong>Primary:</strong> 3 fair attempts (≤30% prune, real eval) &amp; clear-win rate &lt;25% → stop.</li>
+        <li><strong>Secondary:</strong> 2 consecutive with &gt;15% Tier-1 drop, loops, or “do not use”.</li>
+        <li><strong>Validated only when:</strong> ≥3 clear wins, ≥50% success, ≥1 win at 40–50%.</li>
+      </ul>
+      <div class="callout" style="margin-top:16px;">
+        <strong>Worked result</strong> <span class="dim">(22 attempts, scaled to 62 models):</span>
+        <span class="chip fail">0 clear wins</span>
+        <span class="chip marg">~23% marginal</span>
+        <span class="chip fail">50% prune ≈ 60% fail</span>
+        → not justified for solo/community settings.
+      </div>
+    </section>
+
+    <!-- 12 PRODUCER CHECKLIST -->
+    <section>
+      <span class="fileno">FILE <b>12</b> / 14 · THE FLIP</span>
+      <div class="kicker">Producer checklist</div>
+      <h2>If you ship a pruned MoE</h2>
+      <div class="cols" style="margin-top:.4em;">
+        <ul class="tight">
+          <li>base-vs-pruned <strong>Tier-1 benchmarks</strong> (baseline, n≥100, harness named)</li>
+          <li><strong>prune % in the model name</strong></li>
+          <li><strong>public</strong> calibration + observation datasets</li>
+          <li>repetition-loop <strong>disclosure</strong> (safe vs unsafe modes)</li>
+        </ul>
+        <ul class="tight">
+          <li>prune-vs-quant <strong>separation</strong> per variant</li>
+          <li><strong>correct citation</strong>; no leaked paths/tokens</li>
+          <li>recovery run? post <strong>before/after</strong> quality</li>
+        </ul>
+      </div>
+      <p class="dim small" style="margin-top:14px;">Throughput is preserved for free. <strong style="color:var(--amber)">Ship the quality numbers.</strong></p>
+    </section>
+
+    <!-- 13 WORKED EXAMPLE -->
+    <section>
+      <span class="fileno">FILE <b>13</b> / 14 · EXHIBIT A</span>
+      <div class="kicker">Worked example</div>
+      <h2 style="font-size:1.3em;">Kimi-K2.6-519B · 50% prune</h2>
+      <div class="splitline" style="margin-bottom:.4em;">
+        <span class="chip fail">FAILURE — general use</span>
+        <span class="chip marg">MARGINAL — bounded use</span>
+      </div>
+      <div class="sheet" style="font-size:.56em;">
+        <div class="row"><span class="k">quality baseline</span><span style="color:var(--fail)">none posted</span></div>
+        <div class="row"><span class="k">cited benchmark-traces dataset</span><span style="color:var(--fail)">HTTP 401 — private</span></div>
+        <div class="row"><span class="k">author warning</span><span style="color:var(--fail)">“not stable … repetition loops on open-ended”</span></div>
+        <div class="row"><span class="k">sampling sweep fixes loops?</span><span style="color:var(--fail)">no — persists at temp 0, rep_pen 1.15</span></div>
+        <div class="row"><span class="k">bounded / agentic</span><span style="color:var(--win)">pass</span></div>
+        <div class="row"><span class="k">long-context needle @ 260k</span><span style="color:var(--win)">pass · gate audit diff 0.0</span></div>
+      </div>
+      <p class="dim small" style="margin-top:12px;">Real credit for the serving/QA engineering — an unflinching Failure on the open-ended quality claim the producer’s own warning confirms.</p>
+    </section>
+
+    <!-- 14 CLOSING -->
+    <section data-background-color="#0a0d12">
+      <div class="title-wrap">
+        <div class="kicker">Use it</div>
+        <p class="big-quote" style="font-size:2.3em;">Ship the <span class="hl">quality numbers.</span></p>
+        <div class="rule" style="max-width:60%;"></div>
+        <p style="font-size:.74em;max-width:38ch;color:var(--fg-mute)">The methodology, scorecard, producer checklist, and worked examples are open. Apply it to any pruned / compressed MoE release.</p>
+        <div class="title-meta">
+          <span class="pill"><b>repo</b> · github.com/DJLougen/reap-eval</span>
+          <span class="pill"><b>MIT</b></span>
+          <span class="pill">contributions welcome</span>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script>
+  Reveal.initialize({
+    hash:true,
+    slideNumber:false,
+    transition:'slide',
+    transitionSpeed:'default',
+    backgroundTransition:'fade',
+    controls:true,
+    progress:true,
+    center:false,
+    width:1280, height:720, margin:0.07,
+    minScale:0.2, maxScale:1.6
+  });
+</script>
+</body>
+</html>

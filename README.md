@@ -2,6 +2,8 @@
 
 **A reusable protocol for judging whether a pruned/compressed Mixture-of-Experts checkpoint is worth running.**
 
+**Slides:** a standalone presentation of this methodology lives at **https://djlougen.github.io/reap-eval/** (source: [`docs/index.html`](docs/index.html)).
+
 Distilled from the 0xSero REAP analysis (April–June 2026). Applies to **any** expert-pruning or one-shot MoE compression release — REAP, expert-skipping, expert-merging, layer-dropping — not just one author or method. The worked-example results that motivated it are summarized in §9 and demonstrated in [`examples/`](examples/).
 
 > **One-line thesis:** A pruned MoE is guilty until proven innocent. The burden of proof is **base-vs-pruned quality benchmarks on agentic/coding tasks**, posted by the producer or run by you. Download counts, throughput numbers, observation dumps, and a clean-looking name are **not** evidence of quality.
@@ -11,6 +13,7 @@ Distilled from the 0xSero REAP analysis (April–June 2026). Applies to **any** 
 ## What's in this repo
 
 - **[`README.md`](README.md)** — this methodology (the centerpiece).
+- **[`docs/index.html`](docs/index.html)** — the [slide deck](https://djlougen.github.io/reap-eval/) (reveal.js, self-contained).
 - **[`templates/scorecard.md`](templates/scorecard.md)** — copy-paste; fill one per model evaluated.
 - **[`templates/producer-checklist.md`](templates/producer-checklist.md)** — minimum evidence to ship a pruned MoE.
 - **[`examples/`](examples/)** — worked scorecards (e.g. [`kimi-k2.6-519b.md`](examples/kimi-k2.6-519b.md)).
