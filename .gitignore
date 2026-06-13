@@ -1,0 +1,20 @@
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# Local evaluation outputs generated from templates/ (keep your own results out of the repo)
+/evaluations/
+*.local.md
+
+# Python (if you add eval scripts later)
+__pycache__/
+*.pyc
+.venv/
+venv/
