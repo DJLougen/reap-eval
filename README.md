@@ -18,6 +18,7 @@ Distilled from the 0xSero REAP analysis (April–June 2026). Applies to **any** 
 - **[`templates/producer-checklist.md`](templates/producer-checklist.md)** — minimum evidence to ship a pruned MoE.
 - **[`examples/`](examples/)** — worked scorecards (e.g. [`kimi-k2.6-519b.md`](examples/kimi-k2.6-519b.md)).
 - **[`CONTRIBUTING.md`](CONTRIBUTING.md)** — how to add red flags and case studies.
+- **[`case-study/`](case-study/)** — the source analysis the methodology was distilled from: the 0xSero REAP report (incl. the June reassessment) + the statistical framework.
 
 ---
 
@@ -253,7 +254,7 @@ When is the whole pruning effort *not* economically justified?
 
 **Economic-justification threshold (when to call the method validated):** ≥3 checkpoint-level **clear wins**, success rate **≥50%**, and **≥1 success at a 40–50% ratio**.
 
-**Worked-example result** (0xSero REAP releases, 22 checkpoint-level attempts): 0 clear wins, ~23% marginal, 50%-prune failure ~60% → **not justified** for solo/community settings; the June reassessment (62 models) did not move this. A filled scorecard for one such model is in [`examples/kimi-k2.6-519b.md`](examples/kimi-k2.6-519b.md).
+**Worked-example result** ([0xSero REAP releases](case-study/REAP_Final_Report.md), 22 checkpoint-level attempts): 0 clear wins, ~23% marginal, 50%-prune failure ~60% → **not justified** for solo/community settings; the June reassessment (62 models) did not move this. Full analysis in [`case-study/`](case-study/); a filled scorecard for one model is in [`examples/kimi-k2.6-519b.md`](examples/kimi-k2.6-519b.md).
 
 ---
 
@@ -271,4 +272,4 @@ If you publish one, ship **all** of these or label it experimental and mean it:
 
 ---
 
-*Methodology v1.0 — June 13, 2026. Thresholds, tiers, confidence levels, and stopping rules are carried verbatim from the source statistical analysis; the red-flag catalog and behavioral battery are generalized from the April 2026 analysis and June 2026 reassessment of 0xSero's REAP releases. Applies to any expert-pruning / MoE-compression release.*
+*Methodology v1.0 — June 13, 2026. Thresholds, tiers, confidence levels, and stopping rules are carried verbatim from the source analysis in [`case-study/`](case-study/) (`REAP_statistical_analysis.md` / `REAP_Final_Report.md`); the red-flag catalog and behavioral battery are generalized from the April 2026 analysis and June 2026 reassessment of 0xSero's REAP releases. Applies to any expert-pruning / MoE-compression release.*
